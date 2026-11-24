@@ -2,35 +2,37 @@
 
 **A minimal vector machine designed so that execution is understanding.**
 
-Veggdor is a bare-metal vector ISA and a thin structured language that lowers to it.  
-It was built from scratch under one non-negotiable constraint:
+Veggdor is being built as an AI-native systems language:  
+a substrate where an AI can generate, step, observe, and verify programs  
+without ever appealing to statistical guesswork.
 
 > Every operation must be directly executable, fully observable, and free of predictive ambiguity.
 
 No hidden control flow in the data-parallel core.  
 No opaque runtime.  
 No probabilistic interpretation layer.  
-No allocation, no exceptions, no I/O inside the model.
+No allocation, no exceptions, no I/O inside the model unless made explicit.
 
 If a system cannot step through a Veggdor program and know exactly what happens next, the problem is in the system — not in the language.
 
 ---
 
-## Design thesis
+## The stack
 
-Most languages and intermediate representations that AIs (and many humans) interact with are optimized for *prediction* — pattern completion over large corpora. Veggdor is optimized for the opposite:
+```
+V3   Human/AI surface          (functions, structs, effects)   ← in design
+ ↓
+V2   Structured control        (while, if, variables)          [exists]
+ ↓
+V1   Pure vector ISA           (ld/st/add/sub/mul/red)         [exists + Lean]
+ ↓
+Mem  Flat 64-bit lanes         (total, wrap, alias-legal)
+```
 
-| Property | Choice |
-|----------|--------|
-| Memory | Flat 64-bit lane array |
-| Vector | Explicit `(address, length)` on every instruction |
-| Arithmetic | Deterministic wrap mod 2⁶⁴ |
-| Core ops | Six data-parallel instructions |
-| Control | Minimal, fully explicit (`cmp` / `jz` / `jmp`) |
-| Observability | Disassembler + single-step + trace callback |
-| Formalization | Lean 4 semantics of the core (`lean/Veggdor.lean`) |
+Every higher construct must have a **total lowering**.  
+If it cannot be lowered, it is illegal.
 
-Understanding collapses to stepping.
+See [VISION.md](VISION.md) and [AI_CONTRACT.md](AI_CONTRACT.md).
 
 ---
 
@@ -49,14 +51,7 @@ Understanding collapses to stepping.
 
 ---
 
-## V2 — Structured surface
-
-A small C-/Lisp-flavoured syntax that lowers onto the core plus:
-
-- `cmp f, a, b, op`
-- `jz  flag, target`
-- `jmp target`
-- `set dst, imm, n`
+## V2 — Structured surface (current legal AI surface)
 
 ```
 v8 s;
@@ -71,16 +66,18 @@ while (i < n) {
 }
 ```
 
+Lowers to `cmp` / `jz` / `jmp` + the core ops + `set`.
+
 ---
 
 ## Full observability
 
 | API | Purpose |
 |-----|---------|
-| `veg_disasm` | Turn any instruction back into readable text |
-| `veg_step` | Execute exactly one instruction, update PC |
-| `veg_exec_trace` | Run with a callback before every instruction |
-| `veg_exec` | Bulk execution (still fully deterministic) |
+| `veg_disasm` | Instruction → text |
+| `veg_step` | Execute exactly one instruction |
+| `veg_exec_trace` | Callback before every instruction with full state |
+| `veg_exec` | Bulk deterministic execution |
 
 A tracer sees the complete machine state before every step.  
 There is nothing left to guess.
@@ -89,16 +86,18 @@ There is nothing left to guess.
 
 ## Formal semantics (Lean 4)
 
-`lean/Veggdor.lean` contains a minimal, dependency-free formalisation of the six core operations:
-
-- Memory as `Nat → UInt64`
-- `opLd`, `opAdd`, `opSub`, `opMul`, `opRed`
-- Big-step `exec` over an instruction list
-- Basic identity lemmas (`opLd_zero`, `opAdd_zero`, …)
+`lean/Veggdor.lean` formalises the six core operations with no dependencies.
 
 ```bash
 lean lean/Veggdor.lean
 ```
+
+---
+
+## For AIs
+
+Read [AI_CONTRACT.md](AI_CONTRACT.md) before generating any program.  
+It defines the only legal surface, the verification obligations, and what you must refuse.
 
 ---
 
@@ -107,19 +106,11 @@ lean lean/Veggdor.lean
 | Component | State |
 |-----------|--------|
 | V1 parser + executor | Complete |
-| Disassembler | Complete |
-| Single-step + trace | Complete |
+| Disassembler + step + trace | Complete |
 | V2 structured frontend | Working |
-| Tests | Present |
-| Spec | `veg_spec.md` |
 | Lean 4 core semantics | Present |
-
----
-
-## Why this exists
-
-Most systems that claim to “understand” code do so by statistical approximation.  
-Veggdor is a substrate where understanding reduces to stepping through a tiny, total, deterministic machine that is also machine-checkable.
+| V3 (functions, structs, effects) | In design (see VISION.md) |
+| AI generation contract | Present |
 
 ---
 
@@ -130,4 +121,12 @@ make
 make test
 ```
 
-See `example.v`, `veg_test.c`, `veg2_test.c`, `veg_spec.md`, and `lean/Veggdor.lean`.
+---
+
+## The standard
+
+A language is extreme not when it has the most features,  
+but when an AI can be given a hard systems task and the only feedback  
+it needs is the step tracer and the formal model.
+
+That is the standard Veggdor is being built to.
