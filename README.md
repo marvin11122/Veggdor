@@ -28,6 +28,7 @@ Most languages and intermediate representations that AIs (and many humans) inter
 | Core ops | Six data-parallel instructions |
 | Control | Minimal, fully explicit (`cmp` / `jz` / `jmp`) |
 | Observability | Disassembler + single-step + trace callback |
+| Formalization | Lean 4 semantics of the core (`lean/Veggdor.lean`) |
 
 Understanding collapses to stepping.
 
@@ -72,7 +73,7 @@ while (i < n) {
 
 ---
 
-## Full observability (the part that matters)
+## Full observability
 
 | API | Purpose |
 |-----|---------|
@@ -86,6 +87,21 @@ There is nothing left to guess.
 
 ---
 
+## Formal semantics (Lean 4)
+
+`lean/Veggdor.lean` contains a minimal, dependency-free formalisation of the six core operations:
+
+- Memory as `Nat → UInt64`
+- `opLd`, `opAdd`, `opSub`, `opMul`, `opRed`
+- Big-step `exec` over an instruction list
+- Basic identity lemmas (`opLd_zero`, `opAdd_zero`, …)
+
+```bash
+lean lean/Veggdor.lean
+```
+
+---
+
 ## Status
 
 | Component | State |
@@ -96,17 +112,14 @@ There is nothing left to guess.
 | V2 structured frontend | Working |
 | Tests | Present |
 | Spec | `veg_spec.md` |
-| Formal semantics | Open (the model is small enough) |
+| Lean 4 core semantics | Present |
 
 ---
 
 ## Why this exists
 
 Most systems that claim to “understand” code do so by statistical approximation.  
-Veggdor is a substrate where understanding reduces to stepping through a tiny, total, deterministic machine.
-
-If that turns out to be useful for verification, for AI interpretability research, or for teaching what a machine actually does — good.  
-If not, it remains a clean vector machine that does exactly what it says and nothing else.
+Veggdor is a substrate where understanding reduces to stepping through a tiny, total, deterministic machine that is also machine-checkable.
 
 ---
 
@@ -117,4 +130,4 @@ make
 make test
 ```
 
-See `example.v`, `veg_test.c`, `veg2_test.c`, and `veg_spec.md`.
+See `example.v`, `veg_test.c`, `veg2_test.c`, `veg_spec.md`, and `lean/Veggdor.lean`.
