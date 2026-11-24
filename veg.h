@@ -4,84 +4,85 @@
 /*
  * Veggdor — bare-metal vector machine
  *
- * Philosophy
- * ----------
  * Execution is understanding. Every instruction is total, deterministic,
- * bounds-checked, and fully observable. No hidden control flow in the
- * data-parallel core, no allocation inside the model, no exceptions,
- * no I/O, no probabilistic layer.
+ * bounds-checked, and fully observable.
  *
- * Memory    : flat array of uint64_t lanes (two's complement).
- * Vector    : (base address, length in lanes).
- * Arithmetic: wraps mod 2^64. Aliasing is legal and intentional.
+ * Capability (I/O, alloc, …) enters only through V_EFFECT + host callback.
+ * No silent syscalls. No ambient authority.
  */
 
 #include <stddef.h>
 #include <stdint.h>
 #include <stdio.h>
 
-/* ------------------------------------------------------------------ */
-/* ISA                                                                  */
-/* ------------------------------------------------------------------ */
-
 enum veg_op {
-    /* V1 — pure data-parallel */
-    V_LD,    /* ld  dst, src, n         dst[i] ← src[i]                     */
-    V_ST,    /* st  dst, src, n         src[i] → dst[i]                     */
-    V_ADD,   /* add dst, a, b, n        dst[i] ← a[i] + b[i]                */
-    V_SUB,   /* sub dst, a, b, n        dst[i] ← a[i] - b[i]                */
-    V_MUL,   /* mul dst, a, b, n        dst[i] ← a[i] * b[i]                */
-    V_RED,   /* red dst, a, n, op       dst[0] ← reduce(a[0..n), op)        */
-             /*   redop: 0=add  1=max  2=min                                 */
-
-    /* V2 lowering — control + immediate */
-    V_CMP,   /* cmp f, a, b, op         f[0] ← (a[0] op b[0]) ? 1 : 0       */
-             /*   redop: 0=eq 1=ne 2=lt 3=le 4=gt 5=ge                       */
-    V_SET,   /* set dst, imm, n         dst[i] ← imm   (broadcast)          */
-    V_JZ,    /* jz  flag, target        if mem[flag]==0 then pc ← target    */
-    V_JMP,   /* jmp target              pc ← target                         */
-
+    V_LD,
+    V_ST,
+    V_ADD,
+    V_SUB,
+    V_MUL,
+    V_RED,      /* redop: 0=add 1=max 2=min */
+    V_CMP,      /* redop: 0=eq 1=ne 2=lt 3=le 4=gt 5=ge */
+    V_SET,
+    V_JZ,
+    V_JMP,
+    V_EFFECT,   /* trap to host; descriptor at VEG_EFFECT_BASE */
     V_INVALID
+};
+
+/* Effect descriptor lanes (see EFFECTS.md) */
+#define VEG_EFFECT_BASE    0xFE00ull
+#define VEG_EFFECT_OP      (VEG_EFFECT_BASE + 0)
+#define VEG_EFFECT_ARG0    (VEG_EFFECT_BASE + 1)
+#define VEG_EFFECT_ARG1    (VEG_EFFECT_BASE + 2)
+#define VEG_EFFECT_ARG2    (VEG_EFFECT_BASE + 3)
+#define VEG_EFFECT_RESULT  (VEG_EFFECT_BASE + 4)
+#define VEG_EFFECT_STATUS  (VEG_EFFECT_BASE + 5)
+
+enum veg_effect_op {
+    VEG_EFF_NOP   = 0,
+    VEG_EFF_ALLOC = 1,
+    VEG_EFF_FREE  = 2,
+    VEG_EFF_READ  = 3,
+    VEG_EFF_WRITE = 4,
+    VEG_EFF_OPEN  = 5,
+    VEG_EFF_CLOSE = 6,
+    VEG_EFF_EXIT  = 7
+};
+
+enum veg_effect_status {
+    VEG_EFF_PENDING = 0,
+    VEG_EFF_DONE    = 1,
+    VEG_EFF_ERROR   = 2
 };
 
 typedef struct {
     int      op;
-    uint64_t v[4];   /* addresses / immediates / lengths */
-    int      redop;  /* secondary opcode for RED / CMP   */
+    uint64_t v[4];
+    int      redop;
 } veg_instr_t;
 
-#define VEG_MEM_SIZE (1u << 16)   /* 65536 lanes default address space */
+#define VEG_MEM_SIZE (1u << 16)
 
-/* ------------------------------------------------------------------ */
-/* Core API                                                             */
-/* ------------------------------------------------------------------ */
+/* Host callback: called when V_EFFECT executes.
+ * Must read mem[VEG_EFFECT_*], perform the op, write RESULT+STATUS.
+ * Return 0 to continue, non-zero to abort execution. */
+typedef int (*veg_host_fn)(uint64_t *mem, size_t mem_size, void *userdata);
 
-/* Parse one textual instruction. Returns 0 on success, -1 on error. */
 int  veg_parse_line(const char *line, veg_instr_t *out);
-
-/* Parse a whole file of V1 instructions. Skips blank/comment lines. */
 int  veg_parse_file(FILE *f, veg_instr_t *prog, size_t max, size_t *out_n);
-
-/* Execute the entire program. Bounds-checked. Returns 0 or -1. */
 int  veg_exec(const veg_instr_t *prog, size_t n,
               uint64_t *mem, size_t mem_size);
-
-/* ------------------------------------------------------------------ */
-/* Observability — the part that makes the machine inspectable          */
-/* ------------------------------------------------------------------ */
-
-/* Disassemble one instruction into buf. Always null-terminates.
- * Returns bytes that would have been written (like snprintf). */
+int  veg_exec_host(const veg_instr_t *prog, size_t n,
+                   uint64_t *mem, size_t mem_size,
+                   veg_host_fn host, void *userdata);
 int  veg_disasm(const veg_instr_t *in, char *buf, size_t buflen);
-
-/* Single-step. *pc is the current program counter (updated in place).
- * Returns 0 on success, -1 on fault, 1 if program ended (pc >= n). */
 int  veg_step(const veg_instr_t *prog, size_t n,
               uint64_t *mem, size_t mem_size, size_t *pc);
+int  veg_step_host(const veg_instr_t *prog, size_t n,
+                   uint64_t *mem, size_t mem_size, size_t *pc,
+                   veg_host_fn host, void *userdata);
 
-/* Execute with optional trace callback.
- * trace(pc, instr, mem, mem_size, userdata) is called *before* each insn.
- * If trace returns non-zero, execution stops early (still returns 0). */
 typedef int (*veg_trace_fn)(size_t pc, const veg_instr_t *in,
                             const uint64_t *mem, size_t mem_size,
                             void *userdata);
