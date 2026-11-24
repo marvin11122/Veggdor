@@ -30,6 +30,27 @@ while (a OP b) stmt_or_block
 
 Blocks use `{` `}`.
 
+V3 (implemented, see `V3_SPEC.md`):
+
+```
+struct Point {          // struct with a fixed lane layout
+  x: v1;
+  y: v1;
+}
+
+fn add(a: v1, b: v1) -> v1 {
+  v1 r;
+  r = a + b;
+  return r;
+}
+
+v1 y = add(x, 1);      // call: args → 0xF100, result read from 0xF200
+```
+
+Call convention: the caller writes arguments to `0xF100`, the return
+address (continuation PC) to `0xF000`, then jumps to the callee.
+The callee writes the result to `0xF200` and returns via `jmp *mem[0xF000]`.
+
 That is the entire legal surface right now.
 
 ---
@@ -75,11 +96,13 @@ Reply with the exact missing capability instead of inventing one.
 
 These will be added only when a total lowering exists:
 
-- Named functions with explicit argument/return regions
-- Structs as fixed lane layouts
-- Explicit effect values (I/O, external calls)
+- Modules (`mod` namespaces) — later
 
 Until they appear in this contract with a lowering rule, they are illegal.
+
+Functions with explicit argument/return regions, structs as fixed lane
+layouts, and explicit effect values are now implemented (see `V3_SPEC.md`)
+and were added to this contract in section 2.
 
 ---
 

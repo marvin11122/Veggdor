@@ -9,6 +9,13 @@ static int fail(const char *msg)
     return 1;
 }
 
+static int find_func3(veg3_unit_t *u, const char *name)
+{
+    for (uint32_t i = 0; i < u->nfuncs; i++)
+        if (strcmp(u->funcs[i].name, name) == 0) return (int)i;
+    return -1;
+}
+
 int main(void)
 {
     static veg_instr_t prog[512];
@@ -81,5 +88,56 @@ int main(void)
     }
 
     printf("id(42) -> %llu  OK\n", (unsigned long long)mem[VEG3_RETVAL_BASE]);
+
+    /* V3b: nested struct fields — Outer { p: Inner; q: v1; } */
+    {
+        static veg_instr_t prog3[512];
+        static veg3_unit_t unit3;
+        memset(&unit3, 0, sizeof unit3);
+        unit3.prog = prog3;
+        unit3.prog_cap = 512;
+
+        const char *src3 =
+            "struct Inner { a: v1; b: v1; }\n"
+            "struct Outer { p: Inner; q: v1; }\n"
+            "fn read_a() -> v1 {\n"
+            "  Outer o;\n"
+            "  o.p.a = 41;\n"
+            "  return o.p.a;\n"
+            "}\n";
+
+        if (veg3_compile(src3, &unit3) != 0)
+            return fail("compile3");
+        if (unit3.nstructs != 2)
+            return fail("expected 2 structs (nested)");
+        if (unit3.nfuncs != 1)
+            return fail("expected 1 fn (read_a)");
+
+        int ra = find_func3(&unit3, "read_a");
+        if (ra < 0) return fail("read_a not found");
+
+        uint64_t mem3[VEG_MEM_SIZE];
+        memset(mem3, 0, sizeof mem3);
+        size_t start = unit3.prog_len;
+        if (veg3_emit_call(&unit3, (uint32_t)ra, NULL, NULL, 0) != 0)
+            return fail("emit_call3");
+
+        size_t pc = start;
+        while (pc < unit3.prog_len) {
+            int r = veg_step(unit3.prog, unit3.prog_len,
+                             mem3, VEG_MEM_SIZE, &pc);
+            if (r < 0) return fail("exec3 step");
+            if (r > 0) break;
+            if (pc > unit3.prog_len + 10) return fail("runaway3");
+        }
+        if (mem3[VEG3_RETVAL_BASE] != 41) {
+            fprintf(stderr, "retval3=%llu expected 41\n",
+                    (unsigned long long)mem3[VEG3_RETVAL_BASE]);
+            return fail("retval3");
+        }
+        printf("read_a() -> %llu (nested struct field)  OK\n",
+               (unsigned long long)mem3[VEG3_RETVAL_BASE]);
+    }
+    printf("veg3_test OK\n");
     return 0;
 }

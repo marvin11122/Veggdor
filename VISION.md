@@ -80,9 +80,9 @@ Not magic. A stack of total lowerings:
 | Vector arithmetic + reduce | Done | V1 |
 | Structured control | Done | V2 |
 | Formal core semantics | Done | Lean |
-| Functions + call convention | Next | V3 |
-| Structs / arrays of vectors | Next | V3 |
-| Explicit effect system (I/O, alloc) | Next | V3 |
+| Functions + call convention | Done | V3 |
+| Structs / arrays of vectors | Done | V3 |
+| Explicit effect system (I/O, alloc) | Done | V3 |
 | Self-hosting compiler | Later | V3 → V1 |
 | Browser-scale libraries | Later | on top of effects |
 

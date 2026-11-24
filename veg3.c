@@ -246,14 +246,7 @@ static int resolve_path(veg3_unit_t *u, frame_t *f, toks_t *t,
         if (found < 0) return -1;
         base += s->fields[found].offset;
         size  = s->fields[found].size;
-        /* nested struct? */
-        sidx = -1;
-        if (size > 1) {
-            /* try to find a struct with this size+name pattern —
-               for nested types the field type name is not stored;
-               only flat offsets are supported for now when size>1
-               without further dots. */
-        }
+        sidx  = s->fields[found].struct_idx;
     }
     *base_out = base;
     *size_out = size;
@@ -268,11 +261,16 @@ static int parse_struct(toks_t *t, veg3_unit_t *u)
 {
     if (!accept(t, "struct")) return -1;
     const char *name = next(t);
-    if (!is_ident(name) || find_struct(u, name) >= 0) return -1;
-    if (u->nstructs >= VEG3_MAX_STRUCTS) return -1;
+    if (!is_ident(name)) return -1;
+    int idx = find_struct(u, name);
+    if (idx < 0) {
+        if (u->nstructs >= VEG3_MAX_STRUCTS) return -1;
+        idx = (int)u->nstructs;
+        u->nstructs++;
+    }
     if (expect(t, "{") != 0) return -1;
 
-    veg3_struct_t *s = &u->structs[u->nstructs];
+    veg3_struct_t *s = &u->structs[idx];
     memset(s, 0, sizeof *s);
     snprintf(s->name, sizeof s->name, "%s", name);
 
@@ -289,11 +287,11 @@ static int parse_struct(toks_t *t, veg3_unit_t *u)
         snprintf(f->name, sizeof f->name, "%s", fname);
         f->offset = offset;
         f->size = ty.size;
+        f->struct_idx = ty.is_struct ? ty.struct_idx : -1;
         offset += ty.size;
         accept(t, ";");
     }
     s->size = offset;
-    u->nstructs++;
     return 0;
 }
 
@@ -577,6 +575,27 @@ int veg3_compile(const char *src, veg3_unit_t *unit)
 
     toks_t t;
     if (lex(src, &t) != 0) return -1;
+
+    /* Pass 0: register struct names (struct fields may reference any
+       struct, even one defined later in the unit). */
+    {
+        toks_t tp;
+        if (lex(src, &tp) != 0) return -1;
+        while (peek(&tp)) {
+            if (strcmp(peek(&tp), "struct") == 0) {
+                next(&tp);
+                const char *nm = next(&tp);
+                if (!is_ident(nm)) return -1;
+                if (find_struct(unit, nm) >= 0) return -1;
+                if (unit->nstructs >= VEG3_MAX_STRUCTS) return -1;
+                veg3_struct_t *st = &unit->structs[unit->nstructs++];
+                memset(st, 0, sizeof *st);
+                snprintf(st->name, sizeof st->name, "%s", nm);
+            } else {
+                next(&tp);
+            }
+        }
+    }
 
     /* Pass 1: structs only (so types resolve) */
     int saved = t.pos;

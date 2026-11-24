@@ -34,8 +34,9 @@
 
 typedef struct {
     char     name[VEG3_NAME_LEN];
-    uint32_t offset;   /* lane offset from struct base */
-    uint32_t size;     /* in lanes */
+    uint32_t offset;     /* lane offset from struct base */
+    uint32_t size;       /* in lanes */
+    int32_t  struct_idx; /* type of field when it is a struct, else -1 */
 } veg3_field_t;
 
 typedef struct {

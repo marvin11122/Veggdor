@@ -1,12 +1,11 @@
 /-
-  Veggdor.lean — minimal formal semantics of the V1 core ISA
+  Veggdor.lean — formal semantics of the V1 core ISA plus the
+  V2 control layer (set, cmp, jz, jmp) and the V3 call
+  convention (continuation PC at 0xF000).
 
   Memory  : Nat → UInt64   (flat lane array)
   Vector  : (base : Nat) × (len : Nat)
   Arithmetic : UInt64 (wraps mod 2^64 by definition)
-
-  Only the six data-parallel operations are formalised here.
-  Control (cmp/jz/jmp) is left for a later layer.
 -/
 
 namespace Veggdor
@@ -136,8 +135,50 @@ theorem opAdd_zero (m : Mem) (dst a b : Nat) :
     opAdd m dst a b 0 = m := by
   simp [opAdd, Mem.storeVec, Mem.loadVec]
 
+/- ------------------------------------------------------------ -/
+/- V2 control: set, cmp, jz, jmp                               -/
+/- ------------------------------------------------------------ -/
+
+/-- set dst imm n : dst[i] ← imm. -/
+def opSet (m : Mem) (dst : Nat) (imm : UInt64) (n : Nat) : Mem :=
+  m.storeVec dst (List.replicate n imm)
+
+inductive CmpOp where
+  | eq | ne | lt | le | gt | ge
+  deriving DecidableEq, Repr
+
+def cmpOk (a b : UInt64) : CmpOp → Bool
+  | CmpOp.eq => a == b
+  | CmpOp.ne => a != b
+  | CmpOp.lt => a < b
+  | CmpOp.le => a <= b
+  | CmpOp.gt => a > b
+  | CmpOp.ge => a >= b
+
+/-- cmp f a b op : f ← 1 if (m.load a) op (m.load b) else 0. -/
+def opCmp (m : Mem) (f a b : Nat) (op : CmpOp) : Mem :=
+  m.store f (if cmpOk (m.load a) (m.load b) op then (1 : UInt64) else (0 : UInt64))
+
+/-- jz flag target : returns target if mem[flag] == 0, none otherwise. -/
+def opJz (m : Mem) (flag : Nat) (target : Nat) : Option Nat :=
+  if m.load flag == 0 then some target else none
+
+/-- jmp target : pc ← target (V3 return: `jmp *mem[0xF000]`). -/
+def opJmp (_m : Mem) (target : Nat) : Nat := target
+
+/-- V3 call convention: the caller writes the continuation (return) PC
+    into 0xF000 before `jmp`ing to the callee entry. -/
+def V3_RET_PC : Nat := 0xF000
+
+/-- ret: jmp back to the stored continuation. -/
+def opRet (m : Mem) : UInt64 := m.load V3_RET_PC
+
 end Veggdor
 
 #check Veggdor.exec
 #check Veggdor.opLd_zero
 #check Veggdor.opAdd_zero
+#check Veggdor.opSet
+#check Veggdor.opCmp
+#check Veggdor.opJz
+#check Veggdor.opRet
