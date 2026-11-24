@@ -233,6 +233,8 @@ int veg_disasm(const veg_instr_t *in, char *buf, size_t buflen)
                         (unsigned long long)in->v[0],
                         (unsigned long long)in->v[1]);
     case V_JMP:
+        if (in->v[0] == ~(uint64_t)0)
+            return snprintf(buf, buflen, "jmp *mem[0xF000]  ; ret");
         return snprintf(buf, buflen, "jmp %llu",
                         (unsigned long long)in->v[0]);
     default:
@@ -244,6 +246,10 @@ int veg_disasm(const veg_instr_t *in, char *buf, size_t buflen)
 /* Single instruction execution                                         */
 /* ------------------------------------------------------------------ */
 
+/* Call-convention return: jmp with target == ~0 means "jump to mem[0xF000]". */
+#define VEG_RET_PC_ADDR  0xF000ull
+#define VEG_JMP_INDIRECT_RET  (~(uint64_t)0)
+
 static int exec_one(const veg_instr_t *in, uint64_t *mem, size_t mem_size,
                     size_t n_prog, size_t *pc)
 {
@@ -254,10 +260,17 @@ static int exec_one(const veg_instr_t *in, uint64_t *mem, size_t mem_size,
         for (uint64_t k = 0; k < len; k++) mem[dst + k] = imm;
         break;
     }
-    case V_JMP:
-        if (in->v[0] > n_prog) return -1;
-        *pc = (size_t)in->v[0];
-        return 0; /* pc already set, caller must not increment */
+    case V_JMP: {
+        uint64_t target = in->v[0];
+        if (target == VEG_JMP_INDIRECT_RET) {
+            /* Indirect return via call-convention slot */
+            if (VEG_RET_PC_ADDR >= mem_size) return -1;
+            target = mem[VEG_RET_PC_ADDR];
+        }
+        if (target > n_prog) return -1;
+        *pc = (size_t)target;
+        return 0; /* pc already set */
+    }
     case V_JZ:
         if (in->v[0] >= mem_size || in->v[1] > n_prog) return -1;
         if (mem[in->v[0]] == 0) {
@@ -286,7 +299,6 @@ static int exec_one(const veg_instr_t *in, uint64_t *mem, size_t mem_size,
     case V_ST: {
         uint64_t dst = in->v[0], src = in->v[1], len = in->v[2];
         if (len && (dst + len > mem_size || src + len > mem_size)) return -1;
-        /* memmove-like to handle overlap correctly */
         if (dst <= src) {
             for (uint64_t k = 0; k < len; k++) mem[dst + k] = mem[src + k];
         } else {
@@ -336,7 +348,7 @@ int veg_step(const veg_instr_t *prog, size_t n,
              uint64_t *mem, size_t mem_size, size_t *pc)
 {
     if (!prog || !mem || !pc) return -1;
-    if (*pc >= n) return 1;          /* program ended */
+    if (*pc >= n) return 1;
     return exec_one(&prog[*pc], mem, mem_size, n, pc);
 }
 
@@ -360,7 +372,7 @@ int veg_exec_trace(const veg_instr_t *prog, size_t n,
     if (!prog || !mem) return -1;
     while (pc < n) {
         if (trace && trace(pc, &prog[pc], mem, mem_size, userdata))
-            return 0;               /* early stop requested by tracer */
+            return 0;
         if (exec_one(&prog[pc], mem, mem_size, n, &pc) != 0)
             return -1;
     }
