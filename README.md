@@ -2,10 +2,17 @@
 
 **A minimal vector machine designed so that execution is understanding.**
 
-Veggdor is a bare-metal vector ISA and a thin structured language compiled down to it.  
-It was built from scratch with one constraint: every operation must be directly executable, observable, and free of predictive ambiguity. No hidden control flow in the core, no opaque runtime, no probabilistic interpretation layer.
+Veggdor is a bare-metal vector ISA and a thin structured language that lowers to it.  
+It was built from scratch under one non-negotiable constraint:
 
-The point is not performance. The point is legibility under execution.
+> Every operation must be directly executable, fully observable, and free of predictive ambiguity.
+
+No hidden control flow in the data-parallel core.  
+No opaque runtime.  
+No probabilistic interpretation layer.  
+No allocation, no exceptions, no I/O inside the model.
+
+If a system cannot step through a Veggdor program and know exactly what happens next, the problem is in the system — not in the language.
 
 ---
 
@@ -13,20 +20,20 @@ The point is not performance. The point is legibility under execution.
 
 Most languages and intermediate representations that AIs (and many humans) interact with are optimized for *prediction* — pattern completion over large corpora. Veggdor is optimized for the opposite:
 
-- Flat 64-bit lane memory
-- Explicit vector length on every instruction
-- Six core operations + a minimal control layer
-- Deterministic wrap-around arithmetic
-- No allocation, no exceptions, no I/O in the core model
+| Property | Choice |
+|----------|--------|
+| Memory | Flat 64-bit lane array |
+| Vector | Explicit `(address, length)` on every instruction |
+| Arithmetic | Deterministic wrap mod 2⁶⁴ |
+| Core ops | Six data-parallel instructions |
+| Control | Minimal, fully explicit (`cmp` / `jz` / `jmp`) |
+| Observability | Disassembler + single-step + trace callback |
 
-If a system cannot step through a Veggdor program and know exactly what happens next, the problem is in the system, not in the language.
+Understanding collapses to stepping.
 
 ---
 
-## V1 — Core ISA (no control flow)
-
-Memory is a flat array of 64-bit two’s-complement lanes.  
-A vector is simply `(address, length)`.
+## V1 — Core ISA
 
 | Mnemonic | Form | Meaning |
 |----------|------|---------|
@@ -37,22 +44,18 @@ A vector is simply `(address, length)`.
 | `mul` | `dst, a, b, n` | `dst[i] ← a[i] * b[i]` |
 | `red` | `dst, a, n, op` | `dst[0] ← reduce(a[0..n), op)` |
 
-`red` supports `add`, `max`, `min`.  
-Aliasing is allowed. Overflow wraps mod 2⁶⁴.  
-Programs are ordered lists of instructions; there is no branching in V1.
+`red` supports `add`, `max`, `min`. Aliasing is legal. Overlap is handled correctly.
 
 ---
 
-## V2 — Structured layer
+## V2 — Structured surface
 
-A small C-/Lisp-flavored surface that lowers to the core plus three control instructions:
+A small C-/Lisp-flavoured syntax that lowers onto the core plus:
 
 - `cmp f, a, b, op`
-- `jz  target, f`
+- `jz  flag, target`
 - `jmp target`
-- `set dst, imm, n` (broadcast / literal)
-
-Example (sum 1..n):
+- `set dst, imm, n`
 
 ```
 v8 s;
@@ -69,26 +72,41 @@ while (i < n) {
 
 ---
 
+## Full observability (the part that matters)
+
+| API | Purpose |
+|-----|---------|
+| `veg_disasm` | Turn any instruction back into readable text |
+| `veg_step` | Execute exactly one instruction, update PC |
+| `veg_exec_trace` | Run with a callback before every instruction |
+| `veg_exec` | Bulk execution (still fully deterministic) |
+
+A tracer sees the complete machine state before every step.  
+There is nothing left to guess.
+
+---
+
 ## Status
 
 | Component | State |
 |-----------|--------|
-| V1 parser + executor | Working |
+| V1 parser + executor | Complete |
+| Disassembler | Complete |
+| Single-step + trace | Complete |
 | V2 structured frontend | Working |
 | Tests | Present |
 | Spec | `veg_spec.md` |
-| Formalization | Not yet |
-
-This is still a research prototype. The interesting property is not that it is finished; it is that the execution model is small enough to be fully inspected and, if desired, fully formalized.
+| Formal semantics | Open (the model is small enough) |
 
 ---
 
 ## Why this exists
 
 Most systems that claim to “understand” code do so by statistical approximation.  
-Veggdor is an attempt to build a substrate where understanding collapses to stepping.  
-If that turns out to be useful for verification, for AI interpretability, or for teaching what a machine actually does, good.  
-If not, it remains a clean, tiny vector machine that does exactly what it says.
+Veggdor is a substrate where understanding reduces to stepping through a tiny, total, deterministic machine.
+
+If that turns out to be useful for verification, for AI interpretability research, or for teaching what a machine actually does — good.  
+If not, it remains a clean vector machine that does exactly what it says and nothing else.
 
 ---
 
@@ -96,6 +114,7 @@ If not, it remains a clean, tiny vector machine that does exactly what it says.
 
 ```bash
 make
+make test
 ```
 
 See `example.v`, `veg_test.c`, `veg2_test.c`, and `veg_spec.md`.
