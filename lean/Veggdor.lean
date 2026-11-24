@@ -173,6 +173,19 @@ def V3_RET_PC : Nat := 0xF000
 /-- ret: jmp back to the stored continuation. -/
 def opRet (m : Mem) : UInt64 := m.load V3_RET_PC
 
+/-- V3 call convention regions (see `V3_SPEC.md` section 3). -/
+def V3_ARG_BASE : Nat := 0xF100
+def V3_RETVAL_BASE : Nat := 0xF200
+
+/-- callFrame: the caller stores the continuation (return) PC at 0xF000
+    before jumping to the callee entry. All bookkeeping is memory. -/
+def callFrame (m : Mem) (retPC : UInt64) : Mem :=
+  m.store V3_RET_PC retPC
+
+/-- opCall: the machine jumps to the callee entry; args are already in
+    0xF100 and the continuation in 0xF000 — nothing is hidden. -/
+def opCall (m : Mem) (_entry : Nat) : Mem := m
+
 end Veggdor
 
 #check Veggdor.exec
@@ -182,3 +195,5 @@ end Veggdor
 #check Veggdor.opCmp
 #check Veggdor.opJz
 #check Veggdor.opRet
+#check Veggdor.callFrame
+#check Veggdor.opCall
