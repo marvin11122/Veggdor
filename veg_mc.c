@@ -8,13 +8,21 @@
 #include "veg.h"
 
 #include <stdio.h>
+#include <string.h>
 
 #define VEG_MC_MAX_PROG 2048
+#define VEG_MC_LINE_MAX 512
 
 int main(int argc, char **argv)
 {
-    if (argc != 2) {
-        fprintf(stderr, "usage: %s <program.mc>\n", argv[0]);
+    if (argc != 2 || strcmp(argv[1], "--help") == 0 ||
+        strcmp(argv[1], "-h") == 0) {
+        fprintf(argc == 2 ? stdout : stderr,
+                "usage: %s <program.mc>\n"
+                "       %s --help\n"
+                "Executes a Veggdor V1 machine-code file in zeroed memory.\n",
+                argv[0], argv[0]);
+        if (argc == 2) return 0;
         return 2;
     }
 
@@ -26,12 +34,41 @@ int main(int argc, char **argv)
 
     static veg_instr_t prog[VEG_MC_MAX_PROG];
     size_t n = 0;
-    if (veg_parse_file(f, prog, VEG_MC_MAX_PROG, &n) != 0 || n == 0) {
-        fprintf(stderr, "veg_mc: parse error in %s\n", argv[1]);
-        fclose(f);
-        return 1;
+    char line[VEG_MC_LINE_MAX];
+    size_t line_no = 0;
+    int parse_failed = 0;
+    while (fgets(line, sizeof line, f)) {
+        line_no++;
+        size_t len = strlen(line);
+        if (len > 0 && line[len - 1] != '\n' && !feof(f)) {
+            fprintf(stderr, "veg_mc: %s:%zu: line exceeds %d bytes\n",
+                    argv[1], line_no, VEG_MC_LINE_MAX - 1);
+            parse_failed = 1;
+            break;
+        }
+        char *comment = strchr(line, '#');
+        if (comment) *comment = '\0';
+        char *p = line;
+        while (*p == ' ' || *p == '\t' || *p == '\r' || *p == '\n') p++;
+        if (*p == '\0' || *p == ';') continue;
+        if (n == VEG_MC_MAX_PROG || veg_parse_line(p, &prog[n]) != 0) {
+            fprintf(stderr, "veg_mc: %s:%zu: invalid instruction\n",
+                    argv[1], line_no);
+            parse_failed = 1;
+            break;
+        }
+        n++;
+    }
+    if (ferror(f)) {
+        perror("veg_mc: read");
+        parse_failed = 1;
     }
     fclose(f);
+    if (parse_failed) return 1;
+    if (n == 0) {
+        fprintf(stderr, "veg_mc: %s: no instructions\n", argv[1]);
+        return 1;
+    }
 
     char buf[128];
     printf("program: %zu instructions\n", n);

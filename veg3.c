@@ -299,8 +299,8 @@ static int parse_struct(toks_t *t, veg3_unit_t *u)
 /* Expression + statement lowering (function body)                      */
 /* ------------------------------------------------------------------ */
 
-/* Parse a primary: number | path | call
- * Leaves result in *base/*size (allocated in frame if needed). */
+/* Parse a primary: number | path | call.
+ * Leaves result in base_out and size_out (allocated in frame if needed). */
 static int lower_expr(toks_t *t, veg3_unit_t *u, frame_t *f,
                       uint64_t *base_out, uint32_t *size_out);
 
@@ -576,8 +576,9 @@ int veg3_compile(const char *src, veg3_unit_t *unit)
     toks_t t;
     if (lex(src, &t) != 0) return -1;
 
-    /* Pass 0: register struct names (struct fields may reference any
-       struct, even one defined later in the unit). */
+    /* Pass 0: register struct names so the layout pass can resolve types.
+       Struct definitions that contain another struct must follow its
+       definition; recursive and forward-sized layouts are not supported. */
     {
         toks_t tp;
         if (lex(src, &tp) != 0) return -1;

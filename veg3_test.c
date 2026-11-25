@@ -118,17 +118,17 @@ int main(void)
 
         uint64_t mem3[VEG_MEM_SIZE];
         memset(mem3, 0, sizeof mem3);
-        size_t start = unit3.prog_len;
+        size_t nested_start = unit3.prog_len;
         if (veg3_emit_call(&unit3, (uint32_t)ra, NULL, NULL, 0) != 0)
             return fail("emit_call3");
 
-        size_t pc = start;
-        while (pc < unit3.prog_len) {
+        size_t nested_pc = nested_start;
+        while (nested_pc < unit3.prog_len) {
             int r = veg_step(unit3.prog, unit3.prog_len,
-                             mem3, VEG_MEM_SIZE, &pc);
+                             mem3, VEG_MEM_SIZE, &nested_pc);
             if (r < 0) return fail("exec3 step");
             if (r > 0) break;
-            if (pc > unit3.prog_len + 10) return fail("runaway3");
+            if (nested_pc > unit3.prog_len + 10) return fail("runaway3");
         }
         if (mem3[VEG3_RETVAL_BASE] != 41) {
             fprintf(stderr, "retval3=%llu expected 41\n",
