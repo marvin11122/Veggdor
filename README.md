@@ -1,109 +1,156 @@
 free TAY K
 
-# Veggdor
+<div align="center">
 
-**An AI-oriented programming language built around explicit machine state.**
+# VEGGDOR
 
-Veggdor’s core is a small vector machine: programs operate on a flat array of
-64-bit lanes using explicit instructions. The goal is not to claim that an AI
-cannot make mistakes; it is to make program behavior concrete, inspectable,
-and testable instead of relying on an informal interpretation of generated
-code.
+### THE MACHINE IS THE LANGUAGE.
 
-## Start here
+**AI-native programming, down to explicit machine state.**
 
-Requirements: a C11 compiler and `make`. Lean 4 is optional and is needed only
-to check the current Lean model.
+No hidden runtime. No semantic hand-waving.<br>
+Write the operations. Execute them. Inspect every lane.
+
+[Machine model](#the-machine) · [Run it](#run-it) · [AI contract](AI_CONTRACT.md) · [Status](#what-exists-today)
+
+</div>
+
+---
+
+## The thesis
+
+Language models generate tokens. Veggdor does not pretend otherwise.
+The bet is different: make the program they generate **small, explicit,
+executable, and inspectable**—so correctness is tested against actual state
+transitions instead of trusted because an explanation sounds convincing.
+
+> **Generation may be probabilistic. Execution is not.**
+
+Veggdor starts at the machine, not at a pile of abstractions:
+instructions operate on a flat memory of 64-bit lanes. Higher-level
+constructs are useful only when their lowering is visible and testable.
+
+## Run it
+
+Requirements: C11 compiler + `make`. Lean 4 is optional.
 
 ```sh
 make
 make test
-make mc
+make demo-dot
 ```
 
-`make mc` builds and runs `example.mc` through `veg_mc`, the standalone
-machine-code runner. To run another machine-code file:
+The demo computes `[1, 2, 3, 4] · [5, 6, 7, 8] = 70` in Veggdor machine
+code. Run any `.mc` program directly:
 
 ```sh
-./veg_mc path/to/program.mc
-./veg_mc --trace path/to/program.mc
+./veg_mc examples/dot_product.mc
+./veg_mc --trace examples/dot_product.mc
 ```
 
-The runner prints the parsed instructions, executes them in zero-initialized
-memory, and reports nonzero lanes. Machine programs use lane addresses and
-the instruction forms documented below. `--trace` reports each executed
-instruction and the memory-lane changes observed since the preceding step.
+The trace prints each executed instruction and the lane changes it causes.
+The result is in lane `0x130`:
 
-Runnable example: `make demo-dot` executes
-[`examples/dot_product.mc`](examples/dot_product.mc), which computes the
-dot product `[1, 2, 3, 4] · [5, 6, 7, 8]`; the result is written to lane
-`0x130` (`70`, or `0x46`).
+```text
+mem[0x0130] = 0x46
+```
 
-## Machine model
+## The machine
 
-- Memory is a flat array of `uint64_t` lanes.
-- Vector addresses and lengths are measured in lanes.
-- Arithmetic wraps modulo 2⁶⁴.
-- Memory accesses are bounds-checked by the executor.
-- `ld` and `st` copy lanes; overlapping copies are handled by the executor.
-- Machine execution has no implicit I/O. Host capabilities are explicit
-  `effect` instructions handled by a host callback.
+Memory is a flat array of `uint64_t` lanes. Addresses and lengths are lane
+indices. Arithmetic wraps modulo 2⁶⁴; memory access is bounds-checked.
 
-## V1 instruction set
-
-| Instruction | Form | Effect |
+| Instruction | Form | Meaning |
 |---|---|---|
-| `ld` | `ld dst, src, n` | Copy `n` lanes from `src` to `dst`. |
-| `st` | `st dst, src, n` | Copy `n` lanes from `src` to `dst`. |
-| `add` | `add dst, a, b, n` | Elementwise unsigned 64-bit addition. |
-| `sub` | `sub dst, a, b, n` | Elementwise subtraction. |
-| `mul` | `mul dst, a, b, n` | Elementwise multiplication. |
-| `red` | `red dst, src, n, op` | Reduce `n` lanes with `add`, `max`, or `min`. |
-| `set` | `set dst, value, n` | Fill `n` lanes with `value`. |
-| `cmp` | `cmp flag, a, b, op` | Compare scalar lanes; write `0` or `1` to `flag`. |
-| `jz` | `jz flag, target` | Jump when the flag lane is zero. |
-| `jmp` | `jmp target` | Jump to an instruction index. |
-| `effect` | `effect` | Transfer control to the configured host callback. |
+| `ld` | `ld dst, src, n` | Copy `n` lanes |
+| `st` | `st dst, src, n` | Copy `n` lanes |
+| `add` | `add dst, a, b, n` | Elementwise addition |
+| `sub` | `sub dst, a, b, n` | Elementwise subtraction |
+| `mul` | `mul dst, a, b, n` | Elementwise multiplication |
+| `red` | `red dst, src, n, op` | Reduce with `add`, `max`, or `min` |
+| `set` | `set dst, value, n` | Fill lanes with a constant |
+| `cmp` | `cmp flag, a, b, op` | Write scalar comparison as `0` or `1` |
+| `jz` | `jz flag, target` | Jump if the flag lane is zero |
+| `jmp` | `jmp target` | Jump to an instruction index |
+| `effect` | `effect` | Explicit handoff to a host callback |
 
-The executor also exposes single-step, trace, and host-enabled execution APIs
-in `veg.h`. See `EFFECTS.md` for the effect descriptor and host contract.
+Aliasing is allowed. Overlapping copies have defined behavior. The core
+executor performs no implicit I/O.
 
-## Language layers and implementation status
+## Example: machine code, not a mockup
 
-| Layer | What exists | Entry points |
-|---|---|---|
-| V1 | Machine instructions, parser, executor, disassembler, step/trace APIs | `veg.h`, `veg.c`, `veg_mc.c` |
-| V2 | Structured frontend with declarations, assignments, conditionals, loops, and constant initialization | `veg2.h`, `veg2.c` |
-| V3 | Implemented subset for functions, fixed-layout structs, field access, and call lowering | `veg3.h`, `veg3.c`, `V3_SPEC.md` |
-| Host effects | POSIX-backed allocation, file, and exit operations through an explicit callback | `veg_host.h`, `veg_host.c`, `EFFECTS.md` |
-| Lean | Partial formal model; it is not yet a proof of equivalence with the C executor | `lean/Veggdor.lean` |
+[`examples/dot_product.mc`](examples/dot_product.mc):
 
-“Implemented” means the corresponding code and tests exist; it does not mean
-the language is feature-complete, self-hosting, verified end-to-end, or ready
-to replace a general-purpose operating system. The host implementation is
-POSIX-specific. The V3 specification may describe more than the current
-compiler supports.
+```text
+# Dot product: [1, 2, 3, 4] · [5, 6, 7, 8] = 70
+set 0x100, 1, 1
+set 0x101, 2, 1
+set 0x102, 3, 1
+set 0x103, 4, 1
+set 0x110, 5, 1
+set 0x111, 6, 1
+set 0x112, 7, 1
+set 0x113, 8, 1
+mul 0x120, 0x100, 0x110, 4
+red 0x130, 0x120, 4, add
+```
 
-## AI generation contract
+The machine performs four lane-wise multiplications, then reduces the
+products: `5 + 12 + 21 + 32 = 70`. `--trace` exposes the execution state;
+the final memory dump is not inferred from the source.
 
-When generating a Veggdor program, use only constructs implemented by the
-selected frontend. State the lane layout, identify reads and writes, and run
-the tests or execution trace. Do not infer semantics from syntax alone.
+## The stack
 
-- [AI_CONTRACT.md](AI_CONTRACT.md) — current generation rules
-- [V3_SPEC.md](V3_SPEC.md) — V3 design and lowering conventions
-- [EFFECTS.md](EFFECTS.md) — explicit host effects
-- [VISION.md](VISION.md) — project direction
+```text
+V3  functions · structs · effects       implemented subset
+ ↓
+V2  variables · assignments · control  implemented frontend
+ ↓
+V1  vector machine instructions         executable core
+ ↓
+MEM flat 64-bit lanes                   explicit state
+```
 
-## Development
+| Component | Reality today |
+|---|---|
+| V1 machine, executor, disassembler, step/trace | Implemented and tested |
+| `veg_mc` standalone machine-code runner | Implemented; strict parse errors |
+| V2 structured frontend | Implemented subset; see `veg2.h` |
+| V3 functions, fixed-layout structs, lowering | Implemented subset; see `V3_SPEC.md` |
+| Host effects | Explicit callback; current host is POSIX-specific |
+| Lean model | Partial model; **not** a proof of C-executor equivalence |
+| Browser / general-purpose OS / self-hosting | Not implemented |
+
+“Implemented” means code and tests exist—not feature completeness,
+production certification, or a proof of correctness. Read
+[`V3_SPEC.md`](V3_SPEC.md) alongside the compiler: the spec can exceed the
+currently supported subset.
+
+## Built for AI inspection
+
+An AI-generated program should be answerable in machine terms:
+
+1. Which instruction executes next?
+2. Which lanes does it read and write?
+3. What exact state changes?
+4. Can the result be replayed and tested?
+
+Veggdor’s contract is to make those questions concrete. It does not remove
+the need for good specifications, tests, threat models, or human judgment.
+
+Start with [`AI_CONTRACT.md`](AI_CONTRACT.md). See also
+[`EFFECTS.md`](EFFECTS.md), [`VISION.md`](VISION.md), and
+[`lean/Veggdor.lean`](lean/Veggdor.lean).
+
+## Build and verify
 
 ```sh
 make clean
 make
 make test
-lean lean/Veggdor.lean   # optional; checks the current Lean file
+lean lean/Veggdor.lean   # optional
 ```
 
-Tests are local executable checks, not a claim of exhaustive correctness.
-Contributions should include a regression test for each behavior change and
-keep the documented machine semantics aligned with the executor.
+Tests are executable checks, not exhaustive verification. Contributions
+should include regression tests and keep documented semantics aligned with
+the implementation.
