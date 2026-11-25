@@ -34,6 +34,11 @@ memory, and reports nonzero lanes. Machine programs use lane addresses and
 the instruction forms documented below. `--trace` reports each executed
 instruction and the memory-lane changes observed since the preceding step.
 
+Runnable example: `make demo-dot` executes
+[`examples/dot_product.mc`](examples/dot_product.mc), which computes the
+dot product `[1, 2, 3, 4] · [5, 6, 7, 8]`; the result is written to lane
+`0x130` (`70`, or `0x46`).
+
 ## Machine model
 
 - Memory is a flat array of `uint64_t` lanes.
