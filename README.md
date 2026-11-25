@@ -30,6 +30,21 @@ Veggdor starts at the machine, not at a pile of abstractions:
 instructions operate on a flat memory of 64-bit lanes. Higher-level
 constructs are useful only when their lowering is visible and testable.
 
+## The uncomfortable part
+
+**AI can produce code faster than most teams can explain what it guarantees.**
+The industry is scaling output; mathematical confidence is not scaling with it.
+
+“The model said it works” is not an invariant.<br>
+“The tests passed” is not a proof.<br>
+“It looks right” is not a state transition.
+
+If you cannot name the invariant, show the state, and reproduce the failure,
+you do not know what the program guarantees. That is not an insult to
+programmers; it is a bar the whole AI-coding industry has to clear.
+
+Veggdor's challenge: **less code theater, more executable math.**
+
 ## Run it
 
 Requirements: C11 compiler + `make`. Lean 4 is optional.
