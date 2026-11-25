@@ -45,6 +45,27 @@ programmers; it is a bar the whole AI-coding industry has to clear.
 
 Veggdor's challenge: **less code theater, more executable math.**
 
+## The economic bias
+
+The market does not automatically reward truth. It rewards what can be sold,
+scaled, measured, and locked in. In AI software, that can favor more output
+and more usage over fewer claims that are actually verified.
+
+That is an incentive problem—not proof of a conspiracy, and not a claim that
+every company or engineer behaves the same way. But when verification slows
+the demo and exposes uncertainty, the business pressure is obvious:
+**ship the answer; postpone proving it.**
+
+Veggdor takes the opposite side:
+
+- execution over persuasion;
+- inspectable state over black-box confidence;
+- explicit limits over inflated capability claims;
+- reproducible evidence over vendor promises.
+
+The point is not to pretend software can escape economics. It is to make
+correctness harder to fake and easier to inspect—whoever owns the tool.
+
 ## Run it
 
 Requirements: C11 compiler + `make`. Lean 4 is optional.
