@@ -26,11 +26,13 @@ machine-code runner. To run another machine-code file:
 
 ```sh
 ./veg_mc path/to/program.mc
+./veg_mc --trace path/to/program.mc
 ```
 
 The runner prints the parsed instructions, executes them in zero-initialized
 memory, and reports nonzero lanes. Machine programs use lane addresses and
-the instruction forms documented below.
+the instruction forms documented below. `--trace` reports each executed
+instruction and the memory-lane changes observed since the preceding step.
 
 ## Machine model
 
